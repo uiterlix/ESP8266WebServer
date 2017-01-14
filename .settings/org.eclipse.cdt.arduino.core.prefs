@@ -1,0 +1,2 @@
+eclipse.preferences.version=1
+libraries=[{"package"\:"esp8266","platform"\:"esp8266","library"\:"SoftwareSerial"},{"package"\:"esp8266","platform"\:"esp8266","library"\:"ESP8266WiFi"},"DHT sensor library","Adafruit Unified Sensor",{"package"\:"esp8266","platform"\:"esp8266","library"\:"ESP8266"},"NTPClient"]
