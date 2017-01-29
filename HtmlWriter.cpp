@@ -62,6 +62,15 @@ HtmlWriter& HtmlWriter::text(float text) {
     return *this;
 }
 
+HtmlWriter& HtmlWriter::a(char* link, char* text) {
+	append("<a href=\"");
+	append(link);
+	append("\">");
+	append(text);
+	append("</a>", LINEBREAK);
+	return *this;
+}
+
 HtmlWriter& HtmlWriter::startStyle() {
 	append("<style>", LINEBREAK);
 	return *this;

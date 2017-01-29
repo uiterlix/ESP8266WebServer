@@ -52,6 +52,7 @@ public:
 	HtmlWriter& br();
 	HtmlWriter& text(char* text);
 	HtmlWriter& text(float text);
+	HtmlWriter& a(char* link, char* text);
 	HtmlWriter& startStyle();
 	HtmlWriter& endStyle();
 	char* build();

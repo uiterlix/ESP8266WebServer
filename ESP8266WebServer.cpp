@@ -3,11 +3,15 @@
 #include <ESP8266WiFi.h>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
-#include "HTMLWriter.h"
+#include "HtmlWriter.h"
 #include "WiFiCredentials.h"
+#include "HueConstants.h"
+#include "ESP8266HTTPClient.h"
+#include "cstring"
 
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASSWORD;
+const char* lightUrl = LIGHT_URL;
 
 const int bluePin = 13;
 const int redPin = 15;
@@ -15,7 +19,7 @@ const int greenPin = 12;
 
 #define DHTTYPE DHT11
 #define DHTPIN  2
-#define LEDPIN 4
+#define LEDPIN 4 // was 4 for ESP8266 prototype board, 1 on NodeMCU
 
 // Create an instance of the server
 // specify the port to listen on as an argument
@@ -24,6 +28,8 @@ DHT dht(DHTPIN, DHTTYPE);
 
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, 3600);
+HTTPClient http;
+
 
 float temp_f;  // Values read from sensor
 float humid_f;
@@ -84,6 +90,33 @@ void setup() {
 
 }
 
+void toggleLight(int status) {
+	char* on = "{\"on\": true}";
+	char* off = "{\"on\": false}";
+	int success = 0;
+	int retries = 0;
+	while (!success) {
+		http.begin(lightUrl);
+		char* payload = "{\"on\": true}";
+		int httpCode = 0;
+		if (status) {
+			httpCode = http.sendRequest("PUT", (uint8_t*) (on),strlen(on));
+		} else {
+			httpCode = http.sendRequest("PUT", (uint8_t*) (off),strlen(off));
+		}
+		Serial.print("HUE Http response code: ");
+		Serial.println(httpCode);
+		success = httpCode == 200;
+		if (!success) {
+			Serial.println("Hue request failed, retrying...");
+			retries++;
+			delay(200);
+		}
+		if (retries > 3)
+			success = 1;
+	}
+}
+
 void loop() {
 	// Check if WiFi is still connected
 	if (WiFi.status() != WL_CONNECTED) {
@@ -127,56 +160,72 @@ void loop() {
 	if (req.indexOf("/gpio/0") != -1) {
 		val = 0;
 		digitalWrite(LEDPIN, val);
-		s =
-				"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\r\n<html>\r\nGPIO is now 0</html>";
+		toggleLight(0);
 	} else if (req.indexOf("/gpio/1") != -1) {
 		val = 1;
 		digitalWrite(LEDPIN, val);
-		s =
-				"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\r\n<html>\r\nGPIO is now 1</html>";
-	} else if (req.indexOf("/ ") != -1) {
-		// read with raw sample data.
-		long now = millis();
-		if (now - lastPolled > 3000) {
-			// read temperature every 3 seconds max.
-			temp_f = dht.readTemperature();
-			humid_f = dht.readHumidity();
-			lastPolled = millis();
-		}
-		String formattedTime = timeClient.getFormattedTime();
-		char time[100];
-		formattedTime.toCharArray(time, 100);
-		HtmlWriter writer;
-		writer.startHtml()
-			.startStyle()
-				.text("div.content {")
-				.text("font-family: monospace;")
-				.text("font-size: 20px;")
-				.text("text-align: center;")
-				.text("margin-top: 20px; }")
-			.endStyle()
-			.startBody()
-				.startDiv("content")
-					.text("Tijd: ")
-					.text(time)
-					.br()
-					.text("Temperatuur: ")
-					.text(temp_f)
-					.br()
-					.text("Luchtvochtigheid: ")
-					.text(humid_f)
-				.endDiv()
-			.endBody()
-		.endHtml();
-		s = String(writer.build());
-	} else {
-		// send 404
-		Serial.println("404");
-		client.print("HTTP/1.1 404 OK\n");
-		client.flush();
-		setLedToGreen();
-		return;
+		toggleLight(1);
 	}
+
+	// read with raw sample data.
+	long now = millis();
+	char tmp[1];
+	int n = snprintf(tmp, 1, "%lu", now);
+	char nowstr[n + 1];
+	dtostrf(now, n, 0, nowstr);
+	Serial.print("now: ");
+	Serial.println(nowstr);
+
+	char* on = (char*) malloc(30);
+	strcpy(on, "/gpio/1?time=");
+	strcat(on, nowstr);
+
+	char* off = (char*) malloc(30);
+	strcpy(off, "/gpio/0?time=");
+	strcat(off, nowstr);
+
+	if (now - lastPolled > 3000) {
+		// read temperature every 3 seconds max.
+		temp_f = dht.readTemperature();
+		humid_f = dht.readHumidity();
+		lastPolled = millis();
+	}
+	String formattedTime = timeClient.getFormattedTime();
+	char time[100];
+	formattedTime.toCharArray(time, 100);
+	HtmlWriter writer;
+	writer.startHtml()
+		.startStyle()
+			.text("div.content {")
+			.text("font-family: monospace;")
+			.text("font-size: 20px;")
+			.text("text-align: center;")
+			.text("margin-top: 20px; }")
+		.endStyle()
+		.startBody()
+			.startDiv("content")
+				.text("Tijd: ")
+				.text(time)
+				.br()
+				.text("Temperatuur: ")
+				.text(temp_f)
+				.br()
+				.text("Luchtvochtigheid: ")
+				.text(humid_f)
+			.endDiv()
+			.startDiv()
+				.text("Regel de verlichting")
+				.br()
+				.a(off, "Zet verlichting uit")
+				.br()
+				.a(on, "Zet verlichting aan")
+			.endDiv()
+		.endBody()
+	.endHtml();
+	s = String(writer.build());
+	free(on);
+	free(off);
+
 
 	client.flush();
 
